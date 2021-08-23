@@ -65,7 +65,7 @@ export default class AdaTimeStore extends BaseCardanoTimeStore {
           )
         ),
         timeToSlot: new CachedRequest<void => Promise<TimeToAbsoluteSlotFunc>>(
-          () => genTimeToSlot(
+          async () => genTimeToSlot(
             getCardanoHaskellBaseConfig(publicDeriver.getParent().getNetworkInfo())
           )
         ),

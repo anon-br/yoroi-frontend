@@ -107,7 +107,7 @@ export type TimeToAbsoluteSlotFunc = (
   request: TimeToAbsoluteSlotRequest,
 ) => TimeToAbsoluteSlotResponse;
 
-export async function genTimeToSlot(
+export function genTimeToSlot(
   config: $ReadOnlyArray<$ReadOnly<{
     StartAt?: number,
     GenesisDate?: string,
@@ -115,7 +115,7 @@ export async function genTimeToSlot(
     SlotDuration?: number,
     ...,
   }>>,
-): Promise<TimeToAbsoluteSlotFunc> {
+): TimeToAbsoluteSlotFunc {
   return (request: TimeToAbsoluteSlotRequest) => {
     const { GenesisDate, } = config[0];
     if (GenesisDate == null) throw new Error(`${nameof(genTimeToSlot)} missing genesis params`);

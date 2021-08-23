@@ -33,9 +33,9 @@ export async function genToRelativeSlotNumber(
   return baseGenToRelativeSlotNumber(config);
 }
 
-export async function genTimeToSlot(
+export function genTimeToSlot(
   config: $ReadOnlyArray<CardanoHaskellConfig>,
-): Promise<TimeToAbsoluteSlotFunc> {
+): TimeToAbsoluteSlotFunc {
   return baseGenTimeToSlot(config);
 }
 

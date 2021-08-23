@@ -119,7 +119,7 @@ function genMockShelleyCip1852Cache(dummyWallet: PublicDeriver<>) {
             getCardanoHaskellBaseConfig(publicDeriver.getParent().getNetworkInfo())
           );
         }),
-        timeToSlot: new CachedRequest(() => {
+        timeToSlot: new CachedRequest(async () => {
           return genTimeToSlot(
             getCardanoHaskellBaseConfig(publicDeriver.getParent().getNetworkInfo())
           );
