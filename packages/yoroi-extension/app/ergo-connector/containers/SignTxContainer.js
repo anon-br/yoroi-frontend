@@ -19,6 +19,7 @@ import type { ISignRequest } from '../../api/common/lib/transactions/ISignReques
 import { addressToDisplayString } from '../../api/ada/lib/storage/bridge/utils';
 import { SelectedExplorer } from '../../domain/SelectedExplorer';
 import type { UnitOfAccountSettingType } from '../../types/unitOfAccountType';
+import { HaskellShelleyTxSignRequest } from '../../api/ada/transactions/shelley/HaskellShelleyTxSignRequest';
 
 type GeneratedData = typeof SignTxContainer.prototype.generated;
 
@@ -126,6 +127,53 @@ export default class SignTxContainer extends Component<
         );
         break;
       }
+      case 'tx/cardano': {
+        const txData = this.generated.stores.connector.adaTransaction;
+        if (txData == null) return this.renderLoading();
+        component = (
+          <SignTxPage
+            onCopyAddressTooltip={(address, elementId) => {
+              if (!uiNotifications.isOpen(elementId)) {
+                runInAction(() => {
+                  this.notificationElementId = elementId;
+                });
+                actions.notifications.open.trigger({
+                  id: elementId,
+                  duration: tooltipNotification.duration,
+                  message: tooltipNotification.message,
+                });
+              }
+            }}
+            notification={
+              this.notificationElementId == null
+                ? null
+                : uiNotifications.getTooltipActiveNotification(this.notificationElementId)
+            }
+            tx={signingMessage.sign.tx}
+            txData={txData}
+            getTokenInfo={genLookupOrFail(this.generated.stores.tokenInfoStore.tokenInfo)}
+            defaultToken={selectedWallet.publicDeriver.getParent().getDefaultToken()}
+            network={selectedWallet.publicDeriver.getParent().getNetworkInfo()}
+            onConfirm={this.onConfirm}
+            onCancel={this.onCancel}
+            addressToDisplayString={addr => addressToDisplayString(
+              addr,
+              selectedWallet.publicDeriver.getParent().getNetworkInfo()
+            )}
+            getCurrentPrice={this.generated.stores.coinPriceStore.getCurrentPrice}
+            selectedExplorer={
+              this.generated.stores.explorers.selectedExplorer.get(
+                selectedWallet.publicDeriver.getParent().getNetworkInfo().NetworkId
+              ) ??
+              (() => {
+                throw new Error('No explorer for wallet network');
+              })()
+            }
+            unitOfAccountSetting={this.generated.stores.profile.unitOfAccount}
+          />
+        );
+        break;
+      }
       default:
         component = null;
     }
@@ -159,6 +207,7 @@ export default class SignTxContainer extends Component<
         signingMessage: ?SigningMessage,
         wallets: Array<PublicDeriverCache>,
         signingRequest: ?ISignRequest<any>,
+        adaTransaction: ?HaskellShelleyTxSignRequest,
       |},
       explorers: {|
         selectedExplorer: Map<number, SelectedExplorer>,
@@ -192,6 +241,7 @@ export default class SignTxContainer extends Component<
           signingMessage: stores.connector.signingMessage,
           wallets: stores.connector.wallets,
           signingRequest: stores.connector.signingRequest,
+          adaTransaction: stores.connector.adaTransaction,
         },
         explorers: {
           selectedExplorer: stores.explorers.selectedExplorer,

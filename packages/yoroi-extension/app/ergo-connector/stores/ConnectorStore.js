@@ -1,5 +1,6 @@
 /* eslint-disable promise/always-return */
 // @flow
+import BigNumber from 'bignumber.js';
 import { observable, action, runInAction, computed } from 'mobx';
 import Request from '../../stores/lib/LocalizedRequest';
 import Store from '../../stores/base/Store';
@@ -26,6 +27,7 @@ import {
   isCardanoHaskell,
   isErgo,
   getErgoBaseConfig,
+  getCardanoHaskellBaseConfig,
 } from '../../api/ada/lib/storage/database/prepackaged/networks';
 import {
   asGetBalance,
@@ -42,6 +44,17 @@ import { ErgoExternalTxSignRequest } from '../../api/ergo/lib/transactions/ErgoE
 import { RustModule } from '../../api/ada/lib/cardanoCrypto/rustLoader';
 import { toRemoteUtxo } from '../../api/ergo/lib/transactions/utils';
 import { mintedTokenInfo } from '../../../chrome/extension/ergo-connector/utils';
+import {
+  asGetAllUtxos, asHasUtxoChains,
+} from '../../api/ada/lib/storage/models/PublicDeriver/traits';
+import { genTimeToSlot, } from '../../api/ada/lib/storage/bridge/timeUtils';
+import {
+  HaskellShelleyTxSignRequest
+} from '../../api/ada/transactions/shelley/HaskellShelleyTxSignRequest';
+import type {
+  Tx,
+  CardanoTx,
+} from '../../../chrome/extension/ergo-connector/types';
 
 // Need to run only once - Connecting wallets
 let initedConnecting = false;
@@ -130,6 +143,8 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
 
   @observable signingMessage: ?SigningMessage = null;
 
+  @observable adaTransaction: ?HaskellShelleyTxSignRequest = null;
+
   setup(): void {
     super.setup();
     this.actions.connector.getResponse.listen(this._getConnectingMsg);
@@ -178,6 +193,9 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
         runInAction(() => {
           this.signingMessage = response;
         });
+        if (response.sign.type === 'tx/cardano') {
+          this.createAdaTransaction();
+        }
       })
       // eslint-disable-next-line no-console
       .catch(err => console.error(err));
@@ -237,7 +255,9 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
       // know which type of wallet to filter ( ergo || cardano )
       // .filter(wallet => !isErgo(wallet.getParent().getNetworkInfo()));
 
-      await this._getTxAssets(filteredWallets);
+      if (this.signingMessage?.sign.type !== 'tx/cardano') {
+        await this._getTxAssets(filteredWallets);
+      }
 
       const result = [];
       for (const currentWallet of filteredWallets) {
@@ -262,6 +282,9 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
         // note: "replace" is a mobx-specific function
         (this.wallets: any).replace(result);
       });
+      if (this.signingMessage?.sign.type === 'tx/cardano') {
+        this.createAdaTransaction();
+      }
     } catch (err) {
       runInAction(() => {
         this.loadingWallets = LoadingWalletStates.REJECTED;
@@ -284,7 +307,10 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
     if (selectedWallet == null) return;
 
     if (!signingMessage.sign.tx) return;
-    const { tx } = signingMessage.sign;
+    // Because this function is only invoked for a Ergo wallet, we know the type
+    // of `tx` must be `Tx`
+    // $FlowFixMe[prop-missing]
+    const tx: Tx = signingMessage.sign.tx;
     // it's possible we minted assets in this tx, so looking them up will fail
     const mintedTokenIds = mintedTokenInfo(tx).map(t => t.Identifier);
     const tokenIdentifiers = Array.from(new Set([
@@ -306,6 +332,67 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
     });
   }
 
+  createAdaTransaction: void => void = () => {
+    if (this.signingMessage == null) return;
+    const { signingMessage } = this;
+    const selectedWallet = this.wallets.find(
+      wallet => wallet.publicDeriver.getPublicDeriverId() === signingMessage.publicDeriverId
+    );
+    if (selectedWallet == null) return undefined;
+    if (!signingMessage.sign.tx) return undefined;
+    // Invoked only for Cardano, so we know the type of `tx` must be `CardanoTx`.
+    // $FlowFixMe[prop-missing]
+    const tx: CardanoTx  = signingMessage.sign.tx;
+
+    const network = selectedWallet.publicDeriver.getParent().getNetworkInfo();
+
+    if (isCardanoHaskell(network)) {
+      const withUtxos = asGetAllUtxos(selectedWallet.publicDeriver);
+      if (withUtxos == null) {
+        throw new Error(`missing utxo functionality`);
+      }
+
+      const withHasUtxoChains = asHasUtxoChains(withUtxos);
+      if (withHasUtxoChains == null) {
+        throw new Error(`missing chains functionality`);
+      }
+
+      const fullConfig = getCardanoHaskellBaseConfig(network);
+      const squashedConfig = fullConfig.reduce(
+        (acc, next) => Object.assign(acc, next), {}
+      );
+      const timeToSlot = genTimeToSlot(fullConfig);
+      const absSlotNumber = new BigNumber(timeToSlot({
+        time: new Date(),
+      }).slot);
+
+      const defaultToken = this.stores.tokenInfoStore.getDefaultTokenInfo(
+        network.NetworkId
+      );
+
+      const tokens = [{
+        token: defaultToken,
+        amount: tx.amount,
+      }];
+      // TODO: handle min amount as TransactionBuilderStore does
+
+      this.api.ada.createUnsignedTx({
+        publicDeriver: withHasUtxoChains,
+        receiver: tx.receiver,
+        tokens,
+        filter: () => true,
+        absSlotNumber,
+        metadata: undefined,
+      }).then(result => {
+        runInAction(() => {
+          this.adaTransaction = result;
+        });
+      });
+    } else {
+      throw new Error(`${nameof(ConnectorStore)}::${nameof(this.createAdaTransaction)} unexpected wallet type`);
+    }
+  }
+
   @computed get signingRequest(): ?ISignRequest<any> {
     if (this.signingMessage == null) return;
     const { signingMessage } = this;
@@ -314,10 +401,13 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
     );
     if (selectedWallet == null) return undefined;
     if (!signingMessage.sign.tx) return undefined;
-    const { tx } = signingMessage.sign;
 
     const network = selectedWallet.publicDeriver.getParent().getNetworkInfo();
     if (isErgo(network)) {
+      // Since this is Ergo, we know the type of `tx` must be `Tx`.
+      // $FlowFixMe[prop-missing]
+      const tx: Tx = signingMessage.sign.tx;
+
       const config = getErgoBaseConfig(
         network
       ).reduce((acc, next) => Object.assign(acc, next), {});
@@ -337,7 +427,6 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
         networkSettingSnapshot
       });
     }
-    throw new Error(`${nameof(ConnectorStore)}::${nameof(this.signingRequest)} unexpected wallet type`);
   }
 
   // ========== whitelist ========== //

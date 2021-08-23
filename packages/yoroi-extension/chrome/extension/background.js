@@ -41,6 +41,7 @@ import {
   connectorSendTx,
   connectorSendTxCardano,
   connectorSignTx,
+  connectorSignCardanoTx,
   connectorGetUsedAddresses,
   connectorGetUnusedAddresses,
   connectorGetUtxosCardano
@@ -64,6 +65,10 @@ import {
 import { migrateNoRefresh } from '../../app/api/common/migration';
 import { Mutex, } from 'async-mutex';
 import { isCardanoHaskell } from '../../app/api/ada/lib/storage/database/prepackaged/networks';
+import type {
+  Tx,
+  CardanoTx,
+} from './ergo-connector/types';
 
 /*::
 declare var chrome;
@@ -327,7 +332,7 @@ chrome.runtime.onMessage.addListener(async (
   sendResponse
 ) => {
   async function signTxInputs(
-    tx,
+    tx: Tx,
     indices: number[],
     password: string,
     tabId: number
@@ -351,6 +356,27 @@ chrome.runtime.onMessage.addListener(async (
       );
     });
   }
+  async function signCardanoTx(
+    tx: CardanoTx,
+    password: string,
+    tabId: number
+  ): Promise<string> {
+    return await withDb(async (db, localStorageApi) => {
+      return await withSelectedWallet(
+        tabId,
+        async (wallet) => {
+          return await connectorSignCardanoTx(
+            wallet,
+            password,
+            tx,
+          );
+        },
+        db,
+        localStorageApi
+      );
+    });
+  }
+
   // alert(`received event: ${JSON.stringify(request)}`);
   if (request.type === 'connect_response') {
     if (request.tabId == null) return;
@@ -375,7 +401,9 @@ chrome.runtime.onMessage.addListener(async (
       switch (responseData.request.type) {
         case 'tx':
           {
-            const txToSign = request.tx;
+            // We know `tx` is a `Tx` here
+            // $FlowFixMe[prop-missing]
+            const txToSign: Tx = request.tx;
             const allIndices = [];
             for (let i = 0; i < txToSign.inputs.length; i += 1) {
               allIndices.push(i);
@@ -387,7 +415,9 @@ chrome.runtime.onMessage.addListener(async (
         case 'tx_input':
           {
             const data = responseData.request;
-            const txToSign = request.tx;
+            // We know `tx` is a `Tx` here
+            // $FlowFixMe[prop-missing]
+            const txToSign: Tx = request.tx;
             const signedTx = await signTxInputs(
               txToSign,
               [data.index],
@@ -397,6 +427,18 @@ chrome.runtime.onMessage.addListener(async (
             responseData.resolve({ ok: signedTx.inputs[data.index] });
           }
           break;
+        case 'tx/cardano':
+          {
+            const signedTx = await signCardanoTx(
+              // We know `request.tx` is a `CardanoTx` here
+              // $FlowFixMe[prop-missing]
+              (request.tx: CardanoTx),
+              password,
+              request.tabId
+            );
+            responseData.resolve({ ok: signedTx });
+          }
+        break;
         case 'data':
           // mocked data sign
           responseData.resolve({ err: 'Generic data signing is not implemented yet' });
@@ -660,7 +702,30 @@ chrome.runtime.onConnectExternal.addListener(port => {
             } catch (e) {
               handleError(e);
             }
-            break;
+          break;
+          case 'sign_tx/cardano':
+            try {
+              checkParamCount(1);
+              await RustModule.load();
+              const connection = connectedSites.get(tabId);
+              if (connection == null) {
+                Logger.error(`ERR - sign_tx could not find connection with tabId = ${tabId}`);
+                rpcResponse(undefined); // shouldn't happen
+              } else {
+                const resp = await confirmSign(tabId,
+                  {
+                    type: 'tx/cardano',
+                    tx: message.params[0],
+                    uid: message.uid
+                  },
+                  connection
+                );
+                rpcResponse(resp);
+              }
+            } catch (e) {
+              handleError(e);
+            }
+          break;
           case 'sign_tx_input':
             try {
               checkParamCount(2);

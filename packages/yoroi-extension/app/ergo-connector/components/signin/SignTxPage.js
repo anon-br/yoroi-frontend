@@ -36,10 +36,14 @@ import { SelectedExplorer } from '../../../domain/SelectedExplorer';
 import { calculateAndFormatValue } from '../../../utils/unit-of-account';
 import classnames from 'classnames';
 import { mintedTokenInfo } from '../../../../chrome/extension/ergo-connector/utils';
-import type { Tx } from '../../../../chrome/extension/ergo-connector/types';
+import type {
+  Tx,
+  CardanoTx,
+} from '../../../../chrome/extension/ergo-connector/types';
+import { isErgo } from '../../../api/ada/lib/storage/database/prepackaged/networks';
 
 type Props = {|
-  +tx: Tx,
+  +tx: Tx | CardanoTx,
   +txData: ISignRequest<any>,
   +onCopyAddressTooltip: (string, string) => void,
   +onCancel: () => void,
@@ -127,11 +131,15 @@ class SignTxPage extends Component<Props> {
 
   // Tokens can be minted inside the transaction so we have to look it up there first
   _resolveTokenInfo: TokenEntry => $ReadOnly<TokenRow> = tokenEntry => {
-    const { tx } = this.props;
-    const mintedTokens = mintedTokenInfo(tx);
-    const mintedToken = mintedTokens.find(t => tokenEntry.identifier === t.Identifier);
-    if (mintedToken != null) {
-      return mintedToken;
+    if (isErgo(this.props.network)) {
+      // Because this is a Ergo wallet, we know the type of `tx` must be `Tx`
+      // $FlowFixMe[prop-missing]
+      const tx: Tx = this.props.tx;
+      const mintedTokens = mintedTokenInfo(tx);
+      const mintedToken = mintedTokens.find(t => tokenEntry.identifier === t.Identifier);
+      if (mintedToken != null) {
+        return mintedToken;
+      }
     }
     return this.props.getTokenInfo(tokenEntry);
   }

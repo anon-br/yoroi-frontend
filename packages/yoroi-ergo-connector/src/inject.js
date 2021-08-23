@@ -183,7 +183,7 @@ class CardanoAPI {
     }
 
     sign_tx(tx) {
-        return this._cardano_rpc_call('sign_tx', [tx]);
+        return this._cardano_rpc_call('sign_tx/cardano', [tx]);
     }
 
     _cardano_rpc_call(func, params) {
