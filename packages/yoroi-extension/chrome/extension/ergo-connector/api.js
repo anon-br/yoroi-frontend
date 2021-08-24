@@ -8,7 +8,8 @@ import type {
   Tx,
   TxId,
   SignedTx,
-  Value
+  Value,
+  CardanoTx,
 } from './types';
 import { ConnectorError } from './types';
 import { RustModule } from '../../../app/api/ada/lib/cardanoCrypto/rustLoader';
@@ -55,7 +56,6 @@ import AdaApi from '../../../app/api/ada';
 import {
   signTransaction as shelleySignTransaction
 } from '../../../app/api/ada/transactions/shelley/transactions';
-import type { CardanoTx } from './types';
 
 
 function paginateResults<T>(results: T[], paginate: ?Paginate): T[] {
@@ -387,9 +387,6 @@ export async function connectorSignCardanoTx(
 
   const network = publicDeriver.getParent().getNetworkInfo();
   const fullConfig = getCardanoHaskellBaseConfig(network);
-  const squashedConfig = fullConfig.reduce(
-    (acc, next) => Object.assign(acc, next), {}
-  );
   const timeToSlot = genTimeToSlot(fullConfig);
   const absSlotNumber = new BigNumber(timeToSlot({
     time: new Date(),
@@ -397,18 +394,18 @@ export async function connectorSignCardanoTx(
 
   // TODO
   const defaultToken = {
-    "TokenId": 4,
-    "NetworkId": 300,
-    "IsDefault": true,
-    "Identifier": "",
-    "Digest": -6.1389758346808205e-55,
-    "Metadata": {
-      "type": "Cardano",
-      "policyId": "",
-      "assetName": "",
-      "ticker": "TADA",
-      "longName": null,
-      "numberOfDecimals": 6
+    TokenId: 4,
+    NetworkId: 300,
+    IsDefault: true,
+    Identifier: '',
+    Digest: -6.1389758346808205e-55,
+    Metadata: {
+      type: 'Cardano',
+      policyId: '',
+      assetName: '',
+      ticker: 'TADA',
+      longName: null,
+      numberOfDecimals: 6
     }
   };
 

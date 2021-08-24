@@ -16,6 +16,8 @@ import type {
   TxSignWindowRetrieveData,
   RemoveWalletFromWhitelistData,
   GetConnectedSitesData,
+  Tx,
+  CardanoTx,
 } from '../../../chrome/extension/ergo-connector/types';
 import type { ActionsMap } from '../actions/index';
 import type { StoresMap } from './index';
@@ -32,6 +34,8 @@ import {
 import {
   asGetBalance,
   asGetPublicKey,
+  asGetAllUtxos,
+  asHasUtxoChains,
 } from '../../api/ada/lib/storage/models/PublicDeriver/traits';
 import { Bip44Wallet } from '../../api/ada/lib/storage/models/Bip44Wallet/wrapper';
 import { walletChecksum, legacyWalletChecksum } from '@emurgo/cip4-js';
@@ -44,17 +48,11 @@ import { ErgoExternalTxSignRequest } from '../../api/ergo/lib/transactions/ErgoE
 import { RustModule } from '../../api/ada/lib/cardanoCrypto/rustLoader';
 import { toRemoteUtxo } from '../../api/ergo/lib/transactions/utils';
 import { mintedTokenInfo } from '../../../chrome/extension/ergo-connector/utils';
-import {
-  asGetAllUtxos, asHasUtxoChains,
-} from '../../api/ada/lib/storage/models/PublicDeriver/traits';
 import { genTimeToSlot, } from '../../api/ada/lib/storage/bridge/timeUtils';
 import {
   HaskellShelleyTxSignRequest
 } from '../../api/ada/transactions/shelley/HaskellShelleyTxSignRequest';
-import type {
-  Tx,
-  CardanoTx,
-} from '../../../chrome/extension/ergo-connector/types';
+
 
 // Need to run only once - Connecting wallets
 let initedConnecting = false;
@@ -358,9 +356,6 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
       }
 
       const fullConfig = getCardanoHaskellBaseConfig(network);
-      const squashedConfig = fullConfig.reduce(
-        (acc, next) => Object.assign(acc, next), {}
-      );
       const timeToSlot = genTimeToSlot(fullConfig);
       const absSlotNumber = new BigNumber(timeToSlot({
         time: new Date(),
@@ -387,6 +382,8 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
         runInAction(() => {
           this.adaTransaction = result;
         });
+      }).catch(error => {
+        console.error('createUnsignedTx failed:', error);
       });
     } else {
       throw new Error(`${nameof(ConnectorStore)}::${nameof(this.createAdaTransaction)} unexpected wallet type`);
@@ -427,6 +424,8 @@ export default class ConnectorStore extends Store<StoresMap, ActionsMap> {
         networkSettingSnapshot
       });
     }
+    // If this is Cardano wallet, the return value is ignored
+    return undefined;
   }
 
   // ========== whitelist ========== //

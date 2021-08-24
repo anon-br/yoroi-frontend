@@ -24,6 +24,8 @@ import type {
   ConnectRetrieveData,
   RemoveWalletFromWhitelistData,
   GetConnectedSitesData,
+  Tx,
+  CardanoTx,
 } from './ergo-connector/types';
 import {
   APIErrorCodes,
@@ -65,10 +67,7 @@ import {
 import { migrateNoRefresh } from '../../app/api/common/migration';
 import { Mutex, } from 'async-mutex';
 import { isCardanoHaskell } from '../../app/api/ada/lib/storage/database/prepackaged/networks';
-import type {
-  Tx,
-  CardanoTx,
-} from './ergo-connector/types';
+
 
 /*::
 declare var chrome;
